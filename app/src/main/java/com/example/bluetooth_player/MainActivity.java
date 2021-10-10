@@ -37,7 +37,6 @@ import static android.bluetooth.BluetoothAdapter.ACTION_DISCOVERY_STARTED;
 import static java.util.UUID.randomUUID;
 
 public class MainActivity extends AppCompatActivity {
-    //    TODO: ДОДЕЛАТЬ ЧТОБЫ ТЕЛЕФОН БЫЛ ВИДЕН ДЛЯ ДРУГИХ УСТРОЙСТВ ВО ВРЕМЯ ИСПОЛЬЗОВАНИЯ ПРИЛОЖЕНИЯ
 
     //    private static final int REQUEST_ENABLE_BT = 0;
     public static final int REQUEST_ENABLE_BLUETOOTH = 11;
@@ -54,7 +53,6 @@ public class MainActivity extends AppCompatActivity {
     ArrayList<BluetoothDevice> bluetoothDevices = new ArrayList<>();
     ListView lvDevices;
     BluetoothDevice selectedDevice;
-    ArrayList<UUID> uuidArrayList = new  ArrayList<UUID>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -68,12 +66,38 @@ public class MainActivity extends AppCompatActivity {
         registerReceiver(mReceiver, new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED));
 
 
-//        //делаем устройство видимым для других
-//        Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
-//        discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 300);
-//        startActivity(discoverableIntent);
+        //делаем устройство видимым для других
+        Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
+        discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 100);
+        startActivity(discoverableIntent);
 
         checkBluetoothState();
+
+        final Button serverBtn = findViewById(R.id.server_btn);
+        serverBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if (bluetooth != null && bluetooth.isEnabled()) {
+                    if (checkCoarseLocationPermission()) {
+
+                        //TODO: разобраться с потоками
+
+                        Runnable runnableServer = new Runnable() {
+                            @Override
+                            public void run() {
+                                AcceptThread acceptThread = new AcceptThread();
+                                acceptThread.run();
+                                Log.d(TAG, "run: acceptThread");
+                            }
+                        };
+                        // Определяем объект Thread - новый поток
+                        Thread thread = new Thread(runnableServer);
+                        // Запускаем поток
+                        thread.start();
+                    }
+                }
+            }
+        });
 
         final Button bluetoothBtn = findViewById(R.id.bluetooth_btn);
         bluetoothBtn.setOnClickListener(new View.OnClickListener() {
@@ -99,68 +123,8 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
-
-
-
-
-
-//        if (bluetooth != null) {
-////            if (!(bluetooth.isEnabled())) {
-////                // Bluetooth выключен. Предложим пользователю включить его.
-////                Log.d(TAG, "включаем");
-////                Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-////                startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);
-////                onActivityResult(REQUEST_ENABLE_BT, RESULT_OK, enableBtIntent);
-////
-////            }
-////            if (bluetooth.isEnabled()) {
-////                // Bluetooth включен. Работаем.
-////                infoText1.setText("Bluetooth Работает");
-////                String myDeviceAddress = bluetooth.getAddress();
-////                String myDeviceName = bluetooth.getName();
-////                int state = bluetooth.getState();
-//////                STATE_OFF = 10
-//////                STATE_TURNING_ON = 11
-//////                STATE_ON = 12
-//////                STATE_TURNING_OFF = 13
-////                status = myDeviceName + ": " + myDeviceAddress + '\n' + state;
-////                infoText2.setText(status);
-//
-////                показваем список сопряженных устройств
-////                Set<BluetoothDevice> pairedDevices = bluetooth.getBondedDevices();
-////
-////                if (pairedDevices.size() > 0) { // проходимся в цикле по этому списку
-////                    for (BluetoothDevice device : pairedDevices) {
-////                        devices.add(device.getName() + "\n" + device.getAddress());
-////
-////                        ArrayAdapter<String> devicesAdapter = new ArrayAdapter<>
-////                                (this, android.R.layout.simple_list_item_1, devices);
-////                        lvDevices = findViewById(R.id.lv_devices);
-////                        lvDevices.setAdapter(devicesAdapter);
-////                    }
-////                }
-//            // Создаем BroadcastReceiver для ACTION_FOUND
-//
-//
-//            // Регистрируем BroadcastReceiver
-//            IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
-//            registerReceiver(mReceiver, filter);
-//
-//            ArrayAdapter<String> devicesAdapter = new ArrayAdapter<>
-//                    (this, android.R.layout.simple_list_item_1, devices);
-//            lvDevices = findViewById(R.id.lv_devices);
-//            lvDevices.setAdapter(devicesAdapter);
-//
-//            if (bluetooth.startDiscovery()) {
-//                Log.d(TAG, "запускаем поиск");
-//                // Не забудьте снять регистрацию в onDestroy
-//            } else {
-//                Log.d(TAG, "fail");
-//            }
-//            Log.d(TAG, "вырубаем поиск");
-//            bluetooth.cancelDiscovery();
-//        }
     }
+
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
@@ -184,27 +148,23 @@ public class MainActivity extends AppCompatActivity {
                     public void onItemClick(AdapterView<?> parent, View view,
                                             int position, long id) {
                         Log.d(TAG, "itemClick: position = " + position + ", id = " + id);
-                        selectedDevice = bluetoothDevices.get((int)id);
-                        if(selectedDevice.fetchUuidsWithSdp()){
-                            Log.d(TAG, "onItemClick: fetch-true");
-                        }
-                        BluetoothConnector bluetoothConnector = new BluetoothConnector(selectedDevice, true, bluetooth, uuidArrayList);
+                        selectedDevice = bluetoothDevices.get((int) id);
 
-//                        TODO: сделать в отдельном потоке
-                        try {
-                            bluetoothConnector.connect();
-                            Log.d(TAG, "onItemClick: ураарарара");
+                        //TODO: разобраться с потоками
 
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                        }
-
-
-
-//                        ConnectThread launch = new ConnectThread(selectedDevice);
-//                        if (BluetoothDevice.DEVICE_TYPE_CLASSIC == selectedDevice.getType()) {
-//                            launch.start();
-//                        }
+                        // Определяем объект Runnable
+                        Runnable runnableConnection = new Runnable() {
+                            @Override
+                            public void run() {
+                                ConnectThread connectThread = new ConnectThread(selectedDevice);
+                                Log.d(TAG, "run: constructor");
+                                connectThread.run();
+                            }
+                        };
+                        // Определяем объект Thread - новый поток
+                        Thread thread = new Thread(runnableConnection);
+                        // Запускаем поток
+                        thread.start();
                     }
                 });
             }
@@ -358,8 +318,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     }
-    
-    
+
 
     private class ConnectThread extends Thread {
         private final BluetoothSocket mmSocket;
@@ -373,11 +332,9 @@ public class MainActivity extends AppCompatActivity {
 
             // получаем BluetoothSocket чтобы соединиться с BluetoothDevice
             try {
-            // MY_UUID это UUID, который используется и в сервере
+                // MY_UUID это UUID, который используется и в сервере
                 tmp = device.createRfcommSocketToServiceRecord(MY_UUID);
-                Log.d(TAG, "ConnectThread: constructor-succssed");
             } catch (IOException e) {
-                Log.d(TAG, "ConnectThread: constructor-failed");
             }
             mmSocket = tmp;
 
