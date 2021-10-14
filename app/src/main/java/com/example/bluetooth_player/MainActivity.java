@@ -4,7 +4,6 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import androidx.fragment.app.FragmentTransaction;
 
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
@@ -16,54 +15,65 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
-import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
 import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ListView;
-import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
 import java.util.ArrayList;
-import java.util.Set;
 import java.util.UUID;
-
-import static android.bluetooth.BluetoothAdapter.ACTION_DISCOVERY_FINISHED;
-import static android.bluetooth.BluetoothAdapter.ACTION_DISCOVERY_STARTED;
-import static java.util.UUID.randomUUID;
 
 public class MainActivity extends AppCompatActivity {
 
-    //    private static final int REQUEST_ENABLE_BT = 0;
-    public static final int REQUEST_ENABLE_BLUETOOTH = 11;
-    public static final int REQUEST_ACCESS_COARSE_LOCATION = 1;
-    public static final String NAME = "BluetoothPlayer";
-    private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
-//    private static final UUID MY_UUID = randomUUID();
 
-    final String TAG = "Bluetooth-check";
-    //    private String status;
-    BluetoothAdapter bluetooth;
+
+//    вынести в константы
+    private static final int REQUEST_ENABLE_BLUETOOTH = 11;
+    public static final int REQUEST_ACCESS_COARSE_LOCATION = 1;
+
+    final static String TAG = "Bluetooth-check";
+
+    BluetoothAdapter mAdapter;
+    BluetoothService mBluetoothService;
+    boolean permissions = false;
+
     int statusDisc = 0;     //0 = start discovering, 1 = cancel discovering
     ArrayList<String> devicesInfo = new ArrayList<>();
     ArrayList<BluetoothDevice> bluetoothDevices = new ArrayList<>();
     ListView lvDevices;
+
+//    private Handler mHandler;
+//    byte[] bytes = {1,1,0,1,0,1,0,0,0,1};
     BluetoothDevice selectedDevice;
+
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        mAdapter = BluetoothAdapter.getDefaultAdapter();
+        checkCoarseLocationPermission();
 
-        bluetooth = BluetoothAdapter.getDefaultAdapter();
+        mBluetoothService = new BluetoothService(this, this.getApplicationContext(), mAdapter, permissions);
+
+
         registerReceiver(mReceiver, new IntentFilter(BluetoothDevice.ACTION_FOUND));
         registerReceiver(mReceiver, new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_STARTED));
         registerReceiver(mReceiver, new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED));
+
 
 
         //делаем устройство видимым для других
@@ -71,56 +81,43 @@ public class MainActivity extends AppCompatActivity {
         discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 100);
         startActivity(discoverableIntent);
 
-        checkBluetoothState();
+        mBluetoothService.checkBluetoothState();
 
-        final Button serverBtn = findViewById(R.id.server_btn);
+        Button serverBtn = findViewById(R.id.server_btn);
         serverBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                if (bluetooth != null && bluetooth.isEnabled()) {
-                    if (checkCoarseLocationPermission()) {
+                if (mAdapter != null && mAdapter.isEnabled()) {
+                    if (permissions) {
+                        mBluetoothService.startServer();
+
 
                         //TODO: разобраться с потоками
 
-                        Runnable runnableServer = new Runnable() {
-                            @Override
-                            public void run() {
-                                AcceptThread acceptThread = new AcceptThread();
-                                acceptThread.run();
-                                Log.d(TAG, "run: acceptThread");
-                            }
-                        };
-                        // Определяем объект Thread - новый поток
-                        Thread thread = new Thread(runnableServer);
-                        // Запускаем поток
-                        thread.start();
+
+//                        Runnable runnableServer = new Runnable() {
+//                            @Override
+//                            public void run() {
+//                                AcceptThread acceptThread = new AcceptThread();
+//                                acceptThread.run();
+//                                Log.d(TAG, "run: acceptThread");
+//                                //TODO: позакрывать сокеты
+//                            }
+//                        };
+//                        // Определяем объект Thread - новый поток
+//                        Thread thread = new Thread(runnableServer);
+//                        // Запускаем поток
+//                        thread.start();
                     }
                 }
             }
         });
 
-        final Button bluetoothBtn = findViewById(R.id.bluetooth_btn);
-        bluetoothBtn.setOnClickListener(new View.OnClickListener() {
+        Button searchBtn = findViewById(R.id.bluetooth_btn);
+        searchBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                if (statusDisc == 0) {
-                    if (bluetooth != null && bluetooth.isEnabled()) {
-                        if (checkCoarseLocationPermission()) {
-                            Boolean result = bluetooth.startDiscovery(); //start discovering and show result of function
-                            Toast.makeText(getApplicationContext(), "Start discovery result: " + result, Toast.LENGTH_SHORT).show();
-                            Log.d(TAG, "Start discovery: " + result);
-                            bluetoothBtn.setText("Stop");
-                            statusDisc = 1;
-                        }
-                    } else {
-                        checkBluetoothState();
-                    }
-                } else {
-                    Log.d(TAG, "Stop");
-                    statusDisc = 0;
-                    bluetooth.cancelDiscovery();
-                    bluetoothBtn.setText("Start");
-                }
+                mBluetoothService.startSearch();
             }
         });
     }
@@ -134,7 +131,6 @@ public class MainActivity extends AppCompatActivity {
                 BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                 String deviceName = device.getName();
                 String deviceHardwareAddress = device.getAddress(); // MAC address
-                Log.d(TAG, "Device found: " + deviceName + "|" + deviceHardwareAddress);
 
                 bluetoothDevices.add(device);
                 devicesInfo.add(device.getName() + "\n" + device.getAddress());
@@ -145,26 +141,10 @@ public class MainActivity extends AppCompatActivity {
                 checkCoarseLocationPermission();
 
                 lvDevices.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-                    public void onItemClick(AdapterView<?> parent, View view,
-                                            int position, long id) {
-                        Log.d(TAG, "itemClick: position = " + position + ", id = " + id);
+                    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                         selectedDevice = bluetoothDevices.get((int) id);
 
-                        //TODO: разобраться с потоками
-
-                        // Определяем объект Runnable
-                        Runnable runnableConnection = new Runnable() {
-                            @Override
-                            public void run() {
-                                ConnectThread connectThread = new ConnectThread(selectedDevice);
-                                Log.d(TAG, "run: constructor");
-                                connectThread.run();
-                            }
-                        };
-                        // Определяем объект Thread - новый поток
-                        Thread thread = new Thread(runnableConnection);
-                        // Запускаем поток
-                        thread.start();
+                        mBluetoothService.startConnection(selectedDevice);
                     }
                 });
             }
@@ -185,48 +165,22 @@ public class MainActivity extends AppCompatActivity {
                 Toast.makeText(getApplicationContext(), "FINISHED", Toast.LENGTH_SHORT).show();
             }
 
-            if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(action)) {
+            if (mAdapter.ACTION_STATE_CHANGED.equals(action)) {
                 final int extra = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1);
                 if (extra == (BluetoothAdapter.STATE_ON)) {
-                    if (bluetooth.isDiscovering()) {
-                        bluetooth.cancelDiscovery();
+                    if (mAdapter.isDiscovering()) {
+                        mAdapter.cancelDiscovery();
                     }
-                    Boolean b = bluetooth.startDiscovery();
+                    Boolean b = mAdapter.startDiscovery();
                     Toast.makeText(getApplicationContext(), "Start discovery" + b, Toast.LENGTH_SHORT).show();
                 }
             }
         }
     };
 
-    private void checkBluetoothState() {
-        //checks if bluetooth is available and if it´s enabled or not
-        if (bluetooth == null) {
-            Toast.makeText(getApplicationContext(), "Bluetooth not available", Toast.LENGTH_SHORT).show();
-        } else {
-            if (bluetooth.isEnabled()) {
-                if (bluetooth.isDiscovering()) {
-                    Toast.makeText(getApplicationContext(), "Device is discovering...", Toast.LENGTH_SHORT).show();
-                } else {
-                    Toast.makeText(getApplicationContext(), "Bluetooth is enabled", Toast.LENGTH_SHORT).show();
-                }
-            } else {
-                Toast.makeText(getApplicationContext(), "You need to enabled bluetooth", Toast.LENGTH_SHORT).show();
-                Intent enabledIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-                startActivityForResult(enabledIntent, REQUEST_ENABLE_BLUETOOTH);
-            }
-        }
-    }
 
-    private boolean checkCoarseLocationPermission() {
-        //checks all needed permissions
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, REQUEST_ACCESS_COARSE_LOCATION);
-            return false;
-        } else {
-            return true;
-        }
 
-    }
+
 
 //    public void checkPermission() {
 //        if (Build.VERSION.SDK_INT >= 23) {
@@ -248,6 +202,17 @@ public class MainActivity extends AppCompatActivity {
 //        }
 //    }
 
+    //    оставить в активити, в отдельном классе получится колхоз
+    private void checkCoarseLocationPermission() {
+        //checks all needed permissions
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, REQUEST_ACCESS_COARSE_LOCATION);
+            permissions =  false;
+        } else {
+            permissions =  true;
+        }
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -262,128 +227,68 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+
+    public void startBluetooth(){
+        Intent enabledIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+        startActivityForResult(enabledIntent, REQUEST_ENABLE_BLUETOOTH);
+    }
+
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
         if (requestCode == REQUEST_ENABLE_BLUETOOTH) {
-            checkBluetoothState();
-        }
-    }
-
-    private class AcceptThread extends Thread {
-        private final BluetoothServerSocket mmServerSocket;
-
-        public AcceptThread() {
-            // используем вспомогательную переменную, которую в дальнейшем
-            // свяжем с mmServerSocket,
-            BluetoothServerSocket tmp = null;
-            try {
-                // MY_UUID это UUID нашего приложения, это же значение
-                // используется в клиентском приложении
-                tmp = bluetooth.listenUsingRfcommWithServiceRecord(NAME, MY_UUID);
-            } catch (IOException e) {
-            }
-            mmServerSocket = tmp;
-        }
-
-        public void run() {
-            BluetoothSocket socket = null;
-            // ждем пока не произойдет ошибка или не
-            // будет возвращен сокет
-            while (true) {
-                try {
-                    socket = mmServerSocket.accept();
-                } catch (IOException e) {
-                    break;
-                }
-                // если соединение было подтверждено
-                if (socket != null) {
-                    // управлчем соединением (в отдельном потоке)
-                    manageConnectedSocket(socket);
-                    try {
-                        mmServerSocket.close();
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                    break;
-                }
-            }
-        }
-
-        public void cancel() {
-            try {
-                mmServerSocket.close();
-            } catch (IOException e) {
-            }
+            mBluetoothService.checkBluetoothState();
         }
     }
 
 
-    private class ConnectThread extends Thread {
-        private final BluetoothSocket mmSocket;
-        private final BluetoothDevice mmDevice;
 
-        public ConnectThread(BluetoothDevice device) {
-            // используем вспомогательную переменную, которую в дальнейшем
-            // свяжем с mmSocket,
-            BluetoothSocket tmp = null;
-            mmDevice = device;
+//    todo: сделать преобразование трека в байты
 
-            // получаем BluetoothSocket чтобы соединиться с BluetoothDevice
-            try {
-                // MY_UUID это UUID, который используется и в сервере
-                tmp = device.createRfcommSocketToServiceRecord(MY_UUID);
-            } catch (IOException e) {
+    private static byte[] readFileToBytes() throws IOException {
+
+        File file = new File("music.mp3");
+        byte[] bytes = new byte[(int) file.length()];
+
+        FileInputStream fis = null;
+        try {
+
+            fis = new FileInputStream(file);
+
+            //read file into bytes[]
+            fis.read(bytes);
+
+        } finally {
+            if (fis != null) {
+                fis.close();
             }
-            mmSocket = tmp;
-
-        }
-
-        public void run() {
-            // Отменяем сканирование, поскольку оно тормозит соединение
-            bluetooth.cancelDiscovery();
-
-            try {
-                // Соединяемся с устройством через сокет.
-                // Метод блокирует выполнение программы до
-                // установки соединения или возникновения ошибки
-                mmSocket.connect();
-                Log.d(TAG, "run: connect");
-
-            } catch (IOException connectException) {
-                // Невозможно соединиться. Закрываем сокет и выходим.
-                Log.d(TAG, "run: fail");
-                Log.d(TAG, connectException.toString());
-                try {
-                    mmSocket.close();
-                } catch (IOException closeException) {
-                }
-                return;
-            }
-            // управлчем соединением (в отдельном потоке)
-            manageConnectedSocket(mmSocket);
-        }
-
-        /**
-         * отмена ожидания сокета
-         */
-        public void cancel() {
-            try {
-                mmSocket.close();
-            } catch (IOException e) {
-            }
+            return bytes;
         }
     }
 
-    private void manageConnectedSocket(BluetoothSocket socket) {
-        Log.d(TAG, "manageConnectedSocket: succeess");
+    public byte[] convert() throws IOException {
+
+
+        File fileStreamPath = getFileStreamPath("music.mp3");
+        FileInputStream fis = new FileInputStream("file:///android_asset/raw/music.mp3");
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        byte[] b = new byte[1024];
+
+        for (int readNum; (readNum = fis.read(b)) != -1;) {
+            bos.write(b, 0, readNum);
+        }
+
+        byte[] bytes = bos.toByteArray();
+
+        return bytes;
     }
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        unregisterReceiver(mReceiver);
-    }
-}
 
+        @Override
+        protected void onDestroy() {
+            super.onDestroy();
+            unregisterReceiver(mReceiver);
+        }
+    }
