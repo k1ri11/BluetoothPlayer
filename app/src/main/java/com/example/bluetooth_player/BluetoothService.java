@@ -8,6 +8,7 @@ import android.content.Context;
 import android.os.Handler;
 import android.util.Log;
 import android.widget.Toast;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -109,25 +110,15 @@ public class BluetoothService {
 
     private void manageConnectedSocket(BluetoothSocket socket) {
         Log.d(TAG, "manageConnectedSocket: success");
-        // Определяем объект Runnable
-//        Runnable runnableConnection = new Runnable() {
-//            @Override
-//            public void run() {
-//                ConnectedThread connectedThread = new ConnectedThread(socket);
-////                    connectedThread.run();
-//                if (isServer) { // сервер, значит нужно писать в поток
-//                    connectedThread.write(bytes);
-//                    Log.d(TAG, "run: bytes");
-//                } else { // считываем из потока
-//
-//                }
-//            }
-//        };
-//        // Определяем объект Thread - новый поток
-//        Thread thread = new Thread(runnableConnection);
-//        // Запускаем поток
-//        thread.start();
 
+        ConnectedThread connectedThread = new ConnectedThread(socket);
+        connectedThread.start();
+        if (isServer) { // сервер, значит нужно писать в поток
+            Log.d(TAG, "run: bytes");
+//            connectedThread.write(bytes);
+
+        } else { // считываем из потока
+        }
     }
 
     private class ConnectThread extends Thread {
@@ -267,38 +258,18 @@ public class BluetoothService {
     }
 
     public void startServer() {
-        Runnable runnableServer = new Runnable() {
-            @Override
-            public void run() {
-                AcceptThread acceptThread = new AcceptThread();
-                acceptThread.run();
-                Log.d(TAG, "run: start server");
-                //TODO: позакрывать сокеты
-            }
-        };
-        // Определяем объект Thread - новый поток
-        Thread thread = new Thread(runnableServer);
-        // Запускаем поток
-        thread.start();
+        AcceptThread acceptThread = new AcceptThread();
+        Log.d(TAG, "run: start server");
+        acceptThread.start();
+        //TODO: позакрывать сокеты
     }
 
     public void startConnection(BluetoothDevice selectedDevice) {
-        //TODO: разобраться с потоками
 
-        // Определяем объект Runnable
-        Runnable runnableConnection = new Runnable() {
-            @Override
-            public void run() {
-                BluetoothService.ConnectThread connectThread = new ConnectThread(selectedDevice);
-                Log.d(TAG, "run: connectThread");
-                connectThread.run();
-                isServer = false;
-            }
-        };
-        // Определяем объект Thread - новый поток
-        Thread thread = new Thread(runnableConnection);
-        // Запускаем поток
-        thread.start();
+        ConnectThread connectThread = new ConnectThread(selectedDevice);
+        Log.d(TAG, "run: connectThread");
+        isServer = false;
+        connectThread.start();
     }
 
 
@@ -353,8 +324,6 @@ public class BluetoothService {
                 Toast.makeText(context, "Switch failed", Toast.LENGTH_SHORT).show();
         }
     }
-
-
 
 
 //    public BroadcastReceiver getReceiver(){
