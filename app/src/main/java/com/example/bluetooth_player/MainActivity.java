@@ -53,8 +53,6 @@ public class MainActivity extends AppCompatActivity {
     ArrayList<BluetoothDevice> bluetoothDevices = new ArrayList<>();
     ListView lvDevices;
 
-//    private Handler mHandler;
-//    byte[] bytes = {1,1,0,1,0,1,0,0,0,1};
     BluetoothDevice selectedDevice;
 
 
@@ -69,6 +67,10 @@ public class MainActivity extends AppCompatActivity {
 
         mBluetoothService = new BluetoothService(this, this.getApplicationContext(), mAdapter, permissions);
 
+//
+//        registerReceiver(mBluetoothService.getReceiver(), new IntentFilter(BluetoothDevice.ACTION_FOUND));
+//        registerReceiver(mBluetoothService.getReceiver(), new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_STARTED));
+//        registerReceiver(mBluetoothService.getReceiver(), new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED));
 
         registerReceiver(mReceiver, new IntentFilter(BluetoothDevice.ACTION_FOUND));
         registerReceiver(mReceiver, new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_STARTED));

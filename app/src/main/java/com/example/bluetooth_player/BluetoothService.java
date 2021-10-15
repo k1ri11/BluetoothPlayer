@@ -1,23 +1,13 @@
 package com.example.bluetooth_player;
 
-import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.BluetoothSocket;
-import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.Intent;
 import android.os.Handler;
 import android.util.Log;
-import android.view.View;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.Toast;
-
-import androidx.core.app.ActivityCompat;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -31,6 +21,8 @@ public class BluetoothService {
     private int bluetoothState = 0;
     private final Context context;
     private boolean permissions;
+    //    private Handler mHandler;
+//    byte[] bytes = {1,1,0,1,0,1,0,0,0,1};
 
     private final MainActivity activity;//    колхоз
 
@@ -76,6 +68,7 @@ public class BluetoothService {
                 // используется в клиентском приложении
                 tmp = mAdapter.listenUsingRfcommWithServiceRecord(NAME, MY_UUID);
             } catch (IOException e) {
+                e.printStackTrace();
             }
             mServerSocket = tmp;
         }
@@ -108,6 +101,7 @@ public class BluetoothService {
             try {
                 mServerSocket.close();
             } catch (IOException e) {
+                e.printStackTrace();
             }
         }
 
@@ -151,6 +145,7 @@ public class BluetoothService {
                 // MY_UUID это UUID, который используется и в сервере
                 tmp = device.createRfcommSocketToServiceRecord(MY_UUID);
             } catch (IOException e) {
+                e.printStackTrace();
             }
             mSocket = tmp;
 
@@ -173,6 +168,7 @@ public class BluetoothService {
                 try {
                     mSocket.close();
                 } catch (IOException closeException) {
+                    closeException.printStackTrace();
                 }
                 return;
             }
@@ -187,6 +183,7 @@ public class BluetoothService {
             try {
                 mSocket.close();
             } catch (IOException e) {
+                e.printStackTrace();
             }
         }
 
@@ -209,6 +206,7 @@ public class BluetoothService {
                 tmpIn = socket.getInputStream();
                 tmpOut = socket.getOutputStream();
             } catch (IOException e) {
+                e.printStackTrace();
             }
 
             mInStream = tmpIn;
@@ -263,6 +261,7 @@ public class BluetoothService {
             try {
                 mSocket.close();
             } catch (IOException e) {
+                e.printStackTrace();
             }
         }
     }
@@ -337,7 +336,7 @@ public class BluetoothService {
 
             case 2:
                 if (permissions) {
-                    Boolean result = mAdapter.startDiscovery(); //start discovering and show result of function
+                    boolean result = mAdapter.startDiscovery(); //start discovering and show result of function
                     Toast.makeText(context, "Start discovery result: " + result, Toast.LENGTH_SHORT).show();
                     Log.d(TAG, "Start discovery: " + result);
 //                    bluetoothBtn.setText("Stop"); в ui выставляем кнопку на stop
@@ -355,6 +354,14 @@ public class BluetoothService {
         }
     }
 
+
+
+
+//    public BroadcastReceiver getReceiver(){
+//        return mReceiver;
+//    }
+
+
 //    private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
 //        public void onReceive(Context context, Intent intent) {
 //            String action = intent.getAction();
@@ -365,37 +372,41 @@ public class BluetoothService {
 //                String deviceName = device.getName();
 //                String deviceHardwareAddress = device.getAddress(); // MAC address
 //
-//                bluetoothDevices.add(device);
-//                devicesInfo.add(device.getName() + "\n" + device.getAddress());
 //
-//                ArrayAdapter devicesAdapter = new ArrayAdapter(getApplicationContext(), android.R.layout.simple_list_item_1, devicesInfo);
-//                lvDevices = findViewById(R.id.lv_devices);
-//                lvDevices.setAdapter(devicesAdapter);
-//                checkCoarseLocationPermission();
+////                Вызываем update list из адаптера recyclerView, передаемему всю инфу а он внутри сам ее add
+////                bluetoothDevices.add(device);
+////                devicesInfo.add(device.getName() + "\n" + device.getAddress());
+////
+////                это уйдет в фрагмент
+////                ArrayAdapter devicesAdapter = new ArrayAdapter(getApplicationContext(), android.R.layout.simple_list_item_1, devicesInfo);
+////                lvDevices = findViewById(R.id.lv_devices);
+////                lvDevices.setAdapter(devicesAdapter);
+////                checkCoarseLocationPermission();
 //
-//                lvDevices.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-//                    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-//                        selectedDevice = bluetoothDevices.get((int) id);
-//
-//                        mBluetoothService.startConnection(selectedDevice);
-//                    }
-//                });
+////                полностью уйдет в адаптер/фрагмент
+////                lvDevices.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+////                    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+////                        selectedDevice = bluetoothDevices.get((int) id);
+////
+////                        mBluetoothService.startConnection(selectedDevice);
+////                    }
+////                });
 //            }
 //
 //            if (BluetoothAdapter.ACTION_DISCOVERY_STARTED.equals(action)) {
 //                //report user
-//                Log.d(TAG, "Started");
-//                Toast.makeText(getApplicationContext(), "STARTED", Toast.LENGTH_SHORT).show();
+////                Log.d(TAG, "Started");
+////                Toast.makeText(getApplicationContext(), "STARTED", Toast.LENGTH_SHORT).show();
 //            }
 //
 //            if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
 //                //change button back to "Start"
-//                statusDisc = 0;
+////                statusDisc = 0;
 ////                final Button test = findViewById(R.id.testbutton);
 ////                test.setText("Start");
 //                //report user
-//                Log.d(TAG, "Finished");
-//                Toast.makeText(getApplicationContext(), "FINISHED", Toast.LENGTH_SHORT).show();
+////                Log.d(TAG, "Finished");
+////                Toast.makeText(getApplicationContext(), "FINISHED", Toast.LENGTH_SHORT).show();
 //            }
 //
 //            if (mAdapter.ACTION_STATE_CHANGED.equals(action)) {
