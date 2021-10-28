@@ -8,8 +8,6 @@ import androidx.core.content.ContextCompat;
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothServerSocket;
-import android.bluetooth.BluetoothSocket;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -17,32 +15,25 @@ import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Message;
 import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.ListView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.URI;
 import java.util.ArrayList;
-import java.util.UUID;
 
 public class MainActivity extends AppCompatActivity {
 
 
-
-//    вынести в константы
-    private static final int REQUEST_ENABLE_BLUETOOTH = 11;
-    public static final int REQUEST_ACCESS_COARSE_LOCATION = 1;
-
-    final static String TAG = "Bluetooth-check";
 
     BluetoothAdapter mAdapter;
     BluetoothService mBluetoothService;
@@ -55,7 +46,7 @@ public class MainActivity extends AppCompatActivity {
 
     BluetoothDevice selectedDevice;
 
-
+    TextView text;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -65,18 +56,24 @@ public class MainActivity extends AppCompatActivity {
         mAdapter = BluetoothAdapter.getDefaultAdapter();
         checkCoarseLocationPermission();
 
-        mBluetoothService = new BluetoothService(this, this.getApplicationContext(), mAdapter, permissions);
+        final Handler mHandler = new Handler(getMainLooper()) {
+            @Override
+            public void handleMessage(Message msg) {
+                if (msg.what == Constans.MESSAGE_READ) {
+                    byte[] readBuf = (byte[]) msg.obj; //буфер считанный из потока
+                    // construct a string from the valid bytes in the buffer
+                    int bytes = msg.arg1;
+                    text.setText("" + bytes); // возможно во фрагменте нужно будет юзать ui thread
+                    Log.d(Constans.TAG, "handleMessage:bytes " + bytes);
+                }
+            }
+        };
 
-//
-//        registerReceiver(mBluetoothService.getReceiver(), new IntentFilter(BluetoothDevice.ACTION_FOUND));
-//        registerReceiver(mBluetoothService.getReceiver(), new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_STARTED));
-//        registerReceiver(mBluetoothService.getReceiver(), new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED));
+        mBluetoothService = new BluetoothService(this, this.getApplicationContext(), mAdapter, permissions, mHandler);
 
         registerReceiver(mReceiver, new IntentFilter(BluetoothDevice.ACTION_FOUND));
         registerReceiver(mReceiver, new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_STARTED));
         registerReceiver(mReceiver, new IntentFilter(BluetoothAdapter.ACTION_DISCOVERY_FINISHED));
-
-
 
         //делаем устройство видимым для других
         Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
@@ -85,6 +82,8 @@ public class MainActivity extends AppCompatActivity {
 
         mBluetoothService.checkBluetoothState();
 
+        text = findViewById(R.id.text);
+
         Button serverBtn = findViewById(R.id.server_btn);
         serverBtn.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -92,24 +91,6 @@ public class MainActivity extends AppCompatActivity {
                 if (mAdapter != null && mAdapter.isEnabled()) {
                     if (permissions) {
                         mBluetoothService.startServer();
-
-
-                        //TODO: разобраться с потоками
-
-
-//                        Runnable runnableServer = new Runnable() {
-//                            @Override
-//                            public void run() {
-//                                AcceptThread acceptThread = new AcceptThread();
-//                                acceptThread.run();
-//                                Log.d(TAG, "run: acceptThread");
-//                                //TODO: позакрывать сокеты
-//                            }
-//                        };
-//                        // Определяем объект Thread - новый поток
-//                        Thread thread = new Thread(runnableServer);
-//                        // Запускаем поток
-//                        thread.start();
                     }
                 }
             }
@@ -153,7 +134,7 @@ public class MainActivity extends AppCompatActivity {
 
             if (BluetoothAdapter.ACTION_DISCOVERY_STARTED.equals(action)) {
                 //report user
-                Log.d(TAG, "Started");
+                Log.d(Constans.TAG, "Started");
                 Toast.makeText(getApplicationContext(), "STARTED", Toast.LENGTH_SHORT).show();
             }
 
@@ -163,7 +144,7 @@ public class MainActivity extends AppCompatActivity {
 //                final Button test = findViewById(R.id.testbutton);
 //                test.setText("Start");
                 //report user
-                Log.d(TAG, "Finished");
+                Log.d(Constans.TAG, "Finished");
                 Toast.makeText(getApplicationContext(), "FINISHED", Toast.LENGTH_SHORT).show();
             }
 
@@ -179,10 +160,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
     };
-
-
-
-
 
 //    public void checkPermission() {
 //        if (Build.VERSION.SDK_INT >= 23) {
@@ -208,7 +185,7 @@ public class MainActivity extends AppCompatActivity {
     private void checkCoarseLocationPermission() {
         //checks all needed permissions
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, REQUEST_ACCESS_COARSE_LOCATION);
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, Constans.REQUEST_ACCESS_COARSE_LOCATION);
             permissions =  false;
         } else {
             permissions =  true;
@@ -220,7 +197,7 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
         switch (requestCode) {
-            case REQUEST_ACCESS_COARSE_LOCATION:
+            case Constans.REQUEST_ACCESS_COARSE_LOCATION:
                 if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                     Toast.makeText(getApplicationContext(), "Permission granted", Toast.LENGTH_SHORT).show();
                 } else {
@@ -229,23 +206,19 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-
     public void startBluetooth(){
         Intent enabledIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
-        startActivityForResult(enabledIntent, REQUEST_ENABLE_BLUETOOTH);
+        startActivityForResult(enabledIntent, Constans.REQUEST_ENABLE_BLUETOOTH);
     }
-
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
-        if (requestCode == REQUEST_ENABLE_BLUETOOTH) {
+        if (requestCode == Constans.REQUEST_ENABLE_BLUETOOTH) {
             mBluetoothService.checkBluetoothState();
         }
     }
-
-
 
 //    todo: сделать преобразование трека в байты
 
@@ -286,7 +259,6 @@ public class MainActivity extends AppCompatActivity {
 
         return bytes;
     }
-
 
         @Override
         protected void onDestroy() {

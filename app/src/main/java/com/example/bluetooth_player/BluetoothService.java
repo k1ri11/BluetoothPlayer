@@ -6,51 +6,42 @@ import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
 import android.os.Handler;
+import android.os.Message;
 import android.util.Log;
 import android.widget.Toast;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.UUID;
 
 public class BluetoothService {
 
-    final static String TAG = "Bluetooth-check";
-    private static final String NAME = "BluetoothPlayer";
-    private static final int REQUEST_ENABLE_BLUETOOTH = 11;
+
+
     private int bluetoothState = 0;
     private final Context context;
     private boolean permissions;
-    //    private Handler mHandler;
-//    byte[] bytes = {1,1,0,1,0,1,0,0,0,1};
+    byte[] information = {1, 1, 0, 1, 0, 1, 0, 0, 0, 1};
 
     private final MainActivity activity;//    колхоз
-
-
-    //    TODO: поменять uuid на кастомный
-    private static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
-//    private static final UUID MY_UUID = randomUUID();
 
 
     // Member fields
     private final BluetoothAdapter mAdapter;
     private boolean isServer = true;
-    //    private final Handler mHandler;
     private AcceptThread mSecureAcceptThread;
-    //    private AcceptThread mInsecureAcceptThread;
     private ConnectThread mConnectThread;
     private ConnectedThread mConnectedThread;
-    private int mState;
-    private int mNewState;
+    private final Handler mHandler;
     byte[] bytes = {1, 1, 0, 1, 0, 1, 0, 0, 0, 1};
 
 
-    public BluetoothService(MainActivity activity, Context context, BluetoothAdapter mAdapter, boolean permissions) {
+    public BluetoothService(MainActivity activity, Context context, BluetoothAdapter mAdapter, boolean permissions, Handler mHandler) {
         this.mAdapter = mAdapter;
         this.activity = activity;
         this.context = context;
         this.permissions = permissions;
+        this.mHandler = mHandler;
     }
 
     public BluetoothAdapter getAdapter() {
@@ -67,7 +58,7 @@ public class BluetoothService {
             try {
                 // MY_UUID это UUID нашего приложения, это же значение
                 // используется в клиентском приложении
-                tmp = mAdapter.listenUsingRfcommWithServiceRecord(NAME, MY_UUID);
+                tmp = mAdapter.listenUsingRfcommWithServiceRecord(Constans.NAME, Constans.MY_UUID);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -109,16 +100,10 @@ public class BluetoothService {
     }
 
     private void manageConnectedSocket(BluetoothSocket socket) {
-        Log.d(TAG, "manageConnectedSocket: success");
+        Log.d(Constans.TAG, "manageConnectedSocket: success");
 
         ConnectedThread connectedThread = new ConnectedThread(socket);
         connectedThread.start();
-        if (isServer) { // сервер, значит нужно писать в поток
-            Log.d(TAG, "run: bytes");
-//            connectedThread.write(bytes);
-
-        } else { // считываем из потока
-        }
     }
 
     private class ConnectThread extends Thread {
@@ -134,7 +119,7 @@ public class BluetoothService {
             // получаем BluetoothSocket чтобы соединиться с BluetoothDevice
             try {
                 // MY_UUID это UUID, который используется и в сервере
-                tmp = device.createRfcommSocketToServiceRecord(MY_UUID);
+                tmp = device.createRfcommSocketToServiceRecord(Constans.MY_UUID);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -151,11 +136,10 @@ public class BluetoothService {
                 // Метод блокирует выполнение программы до
                 // установки соединения или возникновения ошибки
                 mSocket.connect();
-                Log.d(TAG, "run: connect");
 
             } catch (IOException connectException) {
                 // Невозможно соединиться. Закрываем сокет и выходим.
-                Log.d(TAG, connectException.toString());
+                Log.d(Constans.TAG, connectException.toString());
                 try {
                     mSocket.close();
                 } catch (IOException closeException) {
@@ -184,13 +168,11 @@ public class BluetoothService {
         private final BluetoothSocket mSocket;
         private final InputStream mInStream;
         private final OutputStream mOutStream;
-        private Handler mHandler;
 
         public ConnectedThread(BluetoothSocket socket) {
             mSocket = socket;
             InputStream tmpIn = null;
             OutputStream tmpOut = null;
-
 
             // Получить входящий и исходящий потоки данных
             try {
@@ -205,47 +187,44 @@ public class BluetoothService {
         }
 
         public void run() {
-            Log.d("Bluetooth-check", "run: connected thread start ");
+
             byte[] buffer = new byte[1024];// буферный массив
             int bytes;// bytes returned from read()
-
-            // Прослушиваем InputStream пока не произойдет исключение
-            while (true) {
-                try {
-                    // читаем из InputStream
-                    bytes = mInStream.read(buffer);
-// посылаем прочитанные байты главной деятельности
-//                mHandler.obtainMessage(MESSAGE_READ, bytes, -1, buffer)
-//                        .sendToTarget();
-                } catch (IOException e) {
-                    break;
+            // сервер, значит нужно писать в поток
+            if (isServer) {
+                Log.d(Constans.TAG, "run: write bytes");
+                    write(information);
+                // считываем из потока
+            } else {
+                while (true) {
+                    // Прослушиваем InputStream пока не произойдет исключение
+                    try {
+                        // читаем из InputStream
+                        bytes = mInStream.read(buffer);
+                        if (bytes == -1) Log.d("Bluetooth-check", "no bytes");
+                        else
+                            Log.d("Bluetooth-check", "have bytes:" + bytes);
+//                      посылаем прочитанные байты главной деятельности
+                        Message msg = mHandler.obtainMessage(Constans.MESSAGE_READ, bytes, -1, buffer);
+                        mHandler.sendMessage(msg);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                        break;
+                    }
                 }
             }
         }
-
         /* Вызываем этот метод из главной деятельности, чтобы отправить данные
         удаленному устройству */
         public void write(byte[] bytes) {
-            // Create temporary object
-            BluetoothService.ConnectedThread r;
-            // Synchronize a copy of the ConnectedThread
-            synchronized (this) {
-//                if (mState != STATE_CONNECTED) return;
-                r = mConnectedThread;
+            try {
+                mOutStream.write(bytes);
+            } catch (
+                    IOException e) {
+                e.printStackTrace();
             }
-            // Perform the write unsynchronized
-            r.write(bytes);
         }
 
-        //        try
-//
-//        {
-//            mOutStream.write(bytes);
-//        } catch(
-//        IOException e)
-//        {
-//
-//        }
         /* Вызываем этот метод из главной деятельности,
     чтобы разорвать соединение */
         public void cancel() {
@@ -259,7 +238,7 @@ public class BluetoothService {
 
     public void startServer() {
         AcceptThread acceptThread = new AcceptThread();
-        Log.d(TAG, "run: start server");
+        Log.d(Constans.TAG, "run: start server");
         acceptThread.start();
         //TODO: позакрывать сокеты
     }
@@ -267,9 +246,10 @@ public class BluetoothService {
     public void startConnection(BluetoothDevice selectedDevice) {
 
         ConnectThread connectThread = new ConnectThread(selectedDevice);
-        Log.d(TAG, "run: connectThread");
+        Log.d(Constans.TAG, "run: connectThread");
         isServer = false;
         connectThread.start();
+        //TODO: позакрывать сокеты
     }
 
 
@@ -309,13 +289,13 @@ public class BluetoothService {
                 if (permissions) {
                     boolean result = mAdapter.startDiscovery(); //start discovering and show result of function
                     Toast.makeText(context, "Start discovery result: " + result, Toast.LENGTH_SHORT).show();
-                    Log.d(TAG, "Start discovery: " + result);
+                    Log.d(Constans.TAG, "Start discovery: " + result);
 //                    bluetoothBtn.setText("Stop"); в ui выставляем кнопку на stop
                     bluetoothState = 3;
                 }
                 break;
             case 3:
-                Log.d(TAG, "Stop");
+                Log.d(Constans.TAG, "Stop");
                 mAdapter.cancelDiscovery();
                 bluetoothState = 2;
 //                bluetoothBtn.setText("Start"); в ui выставляем кнопку на start
@@ -324,7 +304,6 @@ public class BluetoothService {
                 Toast.makeText(context, "Switch failed", Toast.LENGTH_SHORT).show();
         }
     }
-
 
 //    public BroadcastReceiver getReceiver(){
 //        return mReceiver;
