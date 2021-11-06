@@ -9,13 +9,18 @@ import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
+import android.provider.MediaStore;
 import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
@@ -24,15 +29,14 @@ import android.widget.Button;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
-
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
-
 
 
     BluetoothAdapter mAdapter;
@@ -47,11 +51,38 @@ public class MainActivity extends AppCompatActivity {
     BluetoothDevice selectedDevice;
 
     TextView text;
+    private final List<MusicList> musicLists = new ArrayList<>();
+
+    byte[] tmpbytes;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+
+        if(ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED){
+            getMusicFiles();
+        }
+        else{
+            if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M){
+                requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 11);
+            }
+            else{
+                getMusicFiles();
+            }
+        }
+
+        try {
+            readFileToBytes();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        WriteByteArrayToFile(tmpbytes);
+
+        Log.d(Constans.TAG, "music files found: " + musicLists.size());
+
 
         mAdapter = BluetoothAdapter.getDefaultAdapter();
         checkCoarseLocationPermission();
@@ -220,44 +251,94 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-//    todo: сделать преобразование трека в байты
+    private void readFileToBytes() throws IOException {
 
-    private static byte[] readFileToBytes() throws IOException {
-
-        File file = new File("music.mp3");
-        byte[] bytes = new byte[(int) file.length()];
+//      выбираем путь трек из листа который нужно проиграть, позже сделать через recycler view
+        String path = musicLists.get(0).getMusicFile();
+        File file = new File(path);
+        tmpbytes = new byte[(int) file.length()];
 
         FileInputStream fis = null;
         try {
-
             fis = new FileInputStream(file);
 
             //read file into bytes[]
-            fis.read(bytes);
+            fis.read(tmpbytes);
 
         } finally {
             if (fis != null) {
                 fis.close();
             }
-            return bytes;
         }
     }
 
-    public byte[] convert() throws IOException {
+    private void WriteByteArrayToFile(byte[] mp3SoundByteArray) {
+        try {
+            File Mytemp = File.createTempFile("TCL", "mp3", getCacheDir());
+            Mytemp.deleteOnExit();
+            FileOutputStream fos = new FileOutputStream(Mytemp);
+            fos.write(mp3SoundByteArray);
+            fos.close();
 
-
-        File fileStreamPath = getFileStreamPath("music.mp3");
-        FileInputStream fis = new FileInputStream("file:///android_asset/raw/music.mp3");
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        byte[] b = new byte[1024];
-
-        for (int readNum; (readNum = fis.read(b)) != -1;) {
-            bos.write(b, 0, readNum);
+//              создаем медиа плеер и сразу запускаем трек
+//            MediaPlayer mediaPlayer = new MediaPlayer();
+//
+//            FileInputStream MyFile = new FileInputStream(Mytemp);
+//            mediaPlayer.setDataSource(MyFile.getFD());
+//
+//            mediaPlayer.prepare();
+//            mediaPlayer.start();
+        } catch (IOException ex) {
+            String s = ex.toString();
+            ex.printStackTrace();
         }
+    }
 
-        byte[] bytes = bos.toByteArray();
+    private void getMusicFiles(){
 
-        return bytes;
+        ContentResolver contentResolver = getContentResolver();
+
+        Uri uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
+
+        Cursor cursor = contentResolver.query(uri, null,MediaStore.Audio.Media.DATA+" LIKE?", new String[]{"%.mp3%"},null);
+
+
+        if(cursor == null){
+            Toast.makeText(this, "Something went wrong!!!", Toast.LENGTH_SHORT).show();
+        }
+        else if(!cursor.moveToNext()){
+            Toast.makeText(this, "No Music Found", Toast.LENGTH_SHORT).show();
+        }
+        else{
+
+            while(cursor.moveToNext())
+//            for (int i=0; i<1; i++)
+            {
+
+                final String getMusicFileName = cursor.getString(cursor.getColumnIndex(MediaStore.Audio.Media.TITLE));
+                final String getArtistName = cursor.getString(cursor.getColumnIndex(MediaStore.Audio.Media.ARTIST));
+                long cursorId = cursor.getLong(cursor.getColumnIndex(MediaStore.Audio.Media._ID));
+
+//                Uri musicFileUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, cursorId);
+
+                String musicFile =  cursor.getString(cursor.getColumnIndex(MediaStore.Audio.Media.DATA));
+
+
+                String getDuration = "00:00";
+
+                if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q){
+                    getDuration = cursor.getString(cursor.getColumnIndex(MediaStore.Audio.AudioColumns.DURATION));
+                }
+
+
+                final MusicList musicList = new MusicList(getMusicFileName, getArtistName, getDuration, false, musicFile);
+                musicLists.add(musicList);
+
+            }
+//            musicAdapter = new MusicAdapter(musicLists, MainActivity.this);
+//            musicRecyclerView.setAdapter(musicAdapter);
+        }
+        cursor.close();
     }
 
         @Override
