@@ -5,17 +5,22 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
+import android.media.MediaPlayer;
 import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.FileDescriptor;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.Arrays;
 
 public class BluetoothService {
-
 
 
     private int bluetoothState = 0;
@@ -25,7 +30,6 @@ public class BluetoothService {
 
     private final MainActivity activity;//    колхоз
 
-
     // Member fields
     private final BluetoothAdapter mAdapter;
     private boolean isServer = true;
@@ -33,7 +37,6 @@ public class BluetoothService {
     private ConnectThread mConnectThread;
     private ConnectedThread mConnectedThread;
     private final Handler mHandler;
-    byte[] bytes = {1, 1, 0, 1, 0, 1, 0, 0, 0, 1};
 
 
     public BluetoothService(MainActivity activity, Context context, BluetoothAdapter mAdapter, boolean permissions, Handler mHandler) {
@@ -46,6 +49,10 @@ public class BluetoothService {
 
     public BluetoothAdapter getAdapter() {
         return mAdapter;
+    }
+
+    public ConnectedThread getmConnectedThread() {
+        return mConnectedThread;
     }
 
     private class AcceptThread extends Thread {
@@ -101,9 +108,8 @@ public class BluetoothService {
 
     private void manageConnectedSocket(BluetoothSocket socket) {
         Log.d(Constans.TAG, "manageConnectedSocket: success");
-
-        ConnectedThread connectedThread = new ConnectedThread(socket);
-        connectedThread.start();
+        mConnectedThread = new ConnectedThread(socket);
+        mConnectedThread.start();
     }
 
     private class ConnectThread extends Thread {
@@ -189,31 +195,25 @@ public class BluetoothService {
         public void run() {
 
             byte[] buffer = new byte[1024];// буферный массив
-            int bytes;// bytes returned from read()
-            // сервер, значит нужно писать в поток
-            if (isServer) {
-                Log.d(Constans.TAG, "run: write bytes");
-                    write(information);
-                // считываем из потока
-            } else {
-                while (true) {
-                    // Прослушиваем InputStream пока не произойдет исключение
-                    try {
-                        // читаем из InputStream
-                        bytes = mInStream.read(buffer);
-                        if (bytes == -1) Log.d("Bluetooth-check", "no bytes");
-                        else
-                            Log.d("Bluetooth-check", "have bytes:" + bytes);
+            int bytesLength;// bytes returned from read()
+            while (true) {
+                // Прослушиваем InputStream пока не произойдет исключение
+                try {
+                    // читаем из InputStream
+                    bytesLength = mInStream.read(buffer);
+                    if (bytesLength == -1) Log.d("Bluetooth-check", "no bytes");
+                    else
+                        Log.d("Bluetooth-check", "have bytes:" + bytesLength);
 //                      посылаем прочитанные байты главной деятельности
-                        Message msg = mHandler.obtainMessage(Constans.MESSAGE_READ, bytes, -1, buffer);
-                        mHandler.sendMessage(msg);
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        break;
-                    }
+                    Message msg = mHandler.obtainMessage(Constans.MESSAGE_READ, bytesLength, -1, buffer);
+                    mHandler.sendMessage(msg);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    break;
                 }
             }
         }
+
         /* Вызываем этот метод из главной деятельности, чтобы отправить данные
         удаленному устройству */
         public void write(byte[] bytes) {
@@ -303,6 +303,58 @@ public class BluetoothService {
             default:
                 Toast.makeText(context, "Switch failed", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    public byte[] readFileToBytes(String path) throws IOException {
+
+//      выбираем путь трек из листа который нужно проиграть, позже сделать через recycler view
+        File file = new File(path);
+        byte[] bytes = new byte[980];
+
+        FileInputStream fis = null;
+        try {
+            fis = new FileInputStream(file);
+
+            //read file into bytes[]
+            fis.read(bytes);
+
+        } finally {
+            if (fis != null) {
+                fis.close();
+            }
+        }
+        Log.d(Constans.TAG, "bytes" + Arrays.toString(bytes));
+        return bytes;
+    }
+
+    public FileInputStream WriteByteArrayToFile(byte[] mp3SoundByteArray) {
+        try {
+            File Mytemp = File.createTempFile("TCL", "mp3", context.getCacheDir());
+            Mytemp.deleteOnExit();
+            FileOutputStream fos = new FileOutputStream(Mytemp);
+            fos.write(mp3SoundByteArray);
+            fos.close();
+
+//          создаем медиа плеер и сразу запускаем трек
+
+//            FileInputStream MyFile = new FileInputStream(Mytemp);
+//            return MyFile;
+
+
+//              создаем медиа плеер и сразу запускаем трек
+            MediaPlayer mediaPlayer = new MediaPlayer();
+
+            FileInputStream MyFile = new FileInputStream(Mytemp);
+            mediaPlayer.setDataSource(MyFile.getFD());
+
+            mediaPlayer.prepare();
+            mediaPlayer.start();
+            return MyFile;
+        } catch (IOException ex) {
+            String s = ex.toString();
+            ex.printStackTrace();
+        }
+        return null;
     }
 
 //    public BroadcastReceiver getReceiver(){

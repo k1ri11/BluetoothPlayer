@@ -15,6 +15,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -29,11 +30,13 @@ import android.widget.Button;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
@@ -53,7 +56,11 @@ public class MainActivity extends AppCompatActivity {
     TextView text;
     private final List<MusicList> musicLists = new ArrayList<>();
 
-    byte[] tmpbytes;
+    byte[] bufferBytes;
+    String playingMusicPath;
+    MediaPlayer mediaPlayer;
+
+    String tmpDeviceName = "";//    колхоз
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -61,29 +68,30 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
 
-        if(ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED){
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
             getMusicFiles();
-        }
-        else{
-            if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.M){
+        } else {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 requestPermissions(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 11);
-            }
-            else{
+            } else {
                 getMusicFiles();
             }
         }
-
-        try {
-            readFileToBytes();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        WriteByteArrayToFile(tmpbytes);
-
         Log.d(Constans.TAG, "music files found: " + musicLists.size());
 
+        Button broadcastBTN = findViewById(R.id.broadcast);
+        broadcastBTN.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                try {
+                    mBluetoothService.getmConnectedThread().write(mBluetoothService.readFileToBytes(musicLists.get(0).getMusicFile()));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        });
 
+        mediaPlayer = new MediaPlayer();
         mAdapter = BluetoothAdapter.getDefaultAdapter();
         checkCoarseLocationPermission();
 
@@ -94,6 +102,11 @@ public class MainActivity extends AppCompatActivity {
                     byte[] readBuf = (byte[]) msg.obj; //буфер считанный из потока
                     // construct a string from the valid bytes in the buffer
                     int bytes = msg.arg1;
+                    Log.d(Constans.TAG, "bytes" + Arrays.toString(readBuf));
+
+                        FileInputStream fis = mBluetoothService.WriteByteArrayToFile(readBuf);
+//                        startPlayer(fis);
+
                     text.setText("" + bytes); // возможно во фрагменте нужно будет юзать ui thread
                     Log.d(Constans.TAG, "handleMessage:bytes " + bytes);
                 }
@@ -136,6 +149,16 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    private void startPlayer(FileInputStream fis) {
+        try {
+            mediaPlayer.setDataSource(fis.getFD());
+            mediaPlayer.prepare();
+            mediaPlayer.start();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
@@ -144,11 +167,11 @@ public class MainActivity extends AppCompatActivity {
                 // object and its info from the Intent.
                 BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                 String deviceName = device.getName();
-                String deviceHardwareAddress = device.getAddress(); // MAC address
-
-                bluetoothDevices.add(device);
-                devicesInfo.add(device.getName() + "\n" + device.getAddress());
-
+                if ((deviceName != null) && !(tmpDeviceName.equals(deviceName))) {
+                    bluetoothDevices.add(device);
+                    devicesInfo.add(deviceName);
+                    tmpDeviceName = deviceName;
+                }
                 ArrayAdapter devicesAdapter = new ArrayAdapter(getApplicationContext(), android.R.layout.simple_list_item_1, devicesInfo);
                 lvDevices = findViewById(R.id.lv_devices);
                 lvDevices.setAdapter(devicesAdapter);
@@ -217,9 +240,9 @@ public class MainActivity extends AppCompatActivity {
         //checks all needed permissions
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.ACCESS_COARSE_LOCATION}, Constans.REQUEST_ACCESS_COARSE_LOCATION);
-            permissions =  false;
+            permissions = false;
         } else {
-            permissions =  true;
+            permissions = true;
         }
     }
 
@@ -237,7 +260,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public void startBluetooth(){
+    public void startBluetooth() {
         Intent enabledIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
         startActivityForResult(enabledIntent, Constans.REQUEST_ENABLE_BLUETOOTH);
     }
@@ -251,67 +274,24 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void readFileToBytes() throws IOException {
 
-//      выбираем путь трек из листа который нужно проиграть, позже сделать через recycler view
-        String path = musicLists.get(0).getMusicFile();
-        File file = new File(path);
-        tmpbytes = new byte[(int) file.length()];
-
-        FileInputStream fis = null;
-        try {
-            fis = new FileInputStream(file);
-
-            //read file into bytes[]
-            fis.read(tmpbytes);
-
-        } finally {
-            if (fis != null) {
-                fis.close();
-            }
-        }
-    }
-
-    private void WriteByteArrayToFile(byte[] mp3SoundByteArray) {
-        try {
-            File Mytemp = File.createTempFile("TCL", "mp3", getCacheDir());
-            Mytemp.deleteOnExit();
-            FileOutputStream fos = new FileOutputStream(Mytemp);
-            fos.write(mp3SoundByteArray);
-            fos.close();
-
-//              создаем медиа плеер и сразу запускаем трек
-//            MediaPlayer mediaPlayer = new MediaPlayer();
-//
-//            FileInputStream MyFile = new FileInputStream(Mytemp);
-//            mediaPlayer.setDataSource(MyFile.getFD());
-//
-//            mediaPlayer.prepare();
-//            mediaPlayer.start();
-        } catch (IOException ex) {
-            String s = ex.toString();
-            ex.printStackTrace();
-        }
-    }
-
-    private void getMusicFiles(){
+    // перенести в fragment
+    private void getMusicFiles() {
 
         ContentResolver contentResolver = getContentResolver();
 
         Uri uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI;
 
-        Cursor cursor = contentResolver.query(uri, null,MediaStore.Audio.Media.DATA+" LIKE?", new String[]{"%.mp3%"},null);
+        Cursor cursor = contentResolver.query(uri, null, MediaStore.Audio.Media.DATA + " LIKE?", new String[]{"%.mp3%"}, null);
 
 
-        if(cursor == null){
+        if (cursor == null) {
             Toast.makeText(this, "Something went wrong!!!", Toast.LENGTH_SHORT).show();
-        }
-        else if(!cursor.moveToNext()){
+        } else if (!cursor.moveToNext()) {
             Toast.makeText(this, "No Music Found", Toast.LENGTH_SHORT).show();
-        }
-        else{
+        } else {
 
-            while(cursor.moveToNext())
+            while (cursor.moveToNext())
 //            for (int i=0; i<1; i++)
             {
 
@@ -321,12 +301,12 @@ public class MainActivity extends AppCompatActivity {
 
 //                Uri musicFileUri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, cursorId);
 
-                String musicFile =  cursor.getString(cursor.getColumnIndex(MediaStore.Audio.Media.DATA));
+                String musicFile = cursor.getString(cursor.getColumnIndex(MediaStore.Audio.Media.DATA));
 
 
                 String getDuration = "00:00";
 
-                if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q){
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     getDuration = cursor.getString(cursor.getColumnIndex(MediaStore.Audio.AudioColumns.DURATION));
                 }
 
@@ -341,9 +321,9 @@ public class MainActivity extends AppCompatActivity {
         cursor.close();
     }
 
-        @Override
-        protected void onDestroy() {
-            super.onDestroy();
-            unregisterReceiver(mReceiver);
-        }
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        unregisterReceiver(mReceiver);
     }
+}
