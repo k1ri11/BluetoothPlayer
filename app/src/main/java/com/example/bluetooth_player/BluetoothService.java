@@ -18,6 +18,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 
 public class BluetoothService {
@@ -194,23 +195,65 @@ public class BluetoothService {
 
         public void run() {
 
-            byte[] buffer = new byte[1024];// буферный массив
-            int bytesLength;// bytes returned from read()
+            byte[] buffer = null;
+            byte[] data;
+            int numberOfBytes = 0;
+            int numbers;
+            int index=0;
+            String numberofBytes;
+            boolean flag = true;
             while (true) {
-                // Прослушиваем InputStream пока не произойдет исключение
-                try {
-                    // читаем из InputStream
-                    bytesLength = mInStream.read(buffer);
-                    if (bytesLength == -1) Log.d("Bluetooth-check", "no bytes");
-                    else
-                        Log.d("Bluetooth-check", "have bytes:" + bytesLength);
-//                      посылаем прочитанные байты главной деятельности
-                    Message msg = mHandler.obtainMessage(Constans.MESSAGE_READ, bytesLength, -1, buffer);
-                    mHandler.sendMessage(msg);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    break;
+
+                if(flag)
+                {
+                    try {
+                        byte[] temp = new byte[mInStream.available()];
+                        if(mInStream.read(temp)>0)
+                        {
+                            numberofBytes = new String(temp, StandardCharsets.UTF_8);
+                            Log.d(Constans.TAG, "run:  " + numberofBytes);
+                            numberOfBytes=Integer.parseInt(numberofBytes);
+                            buffer=new byte[numberOfBytes];
+                            flag=false;
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }else{
+                    try {
+                        data = new byte[mInStream.available()];
+                        numbers = mInStream.read(data);  // почитать про read, и оптимизировать 2 след строки
+
+                        System.arraycopy(data,0,buffer,index,numbers);
+                        index=index+numbers;
+
+                        if(index == numberOfBytes)
+                        {
+                            Message msg = mHandler.obtainMessage(Constans.MESSAGE_READ, numberOfBytes, -1, buffer);
+                            mHandler.sendMessage(msg);
+                            flag = true;
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                 }
+
+
+
+//                // Прослушиваем InputStream пока не произойдет исключение
+//                try {
+//                    // читаем из InputStream
+//                    bytesLength = mInStream.read(buffer);
+//                    if (bytesLength == -1) Log.d("Bluetooth-check", "no bytes");
+//                    else
+//                        Log.d("Bluetooth-check", "have bytes:" + bytesLength);
+////                      посылаем прочитанные байты главной деятельности
+//                    Message msg = mHandler.obtainMessage(Constans.MESSAGE_READ, bytesLength, -1, buffer);
+//                    mHandler.sendMessage(msg);
+//                } catch (IOException e) {
+//                    e.printStackTrace();
+//                    break;
+//                }
             }
         }
 
@@ -309,21 +352,12 @@ public class BluetoothService {
 
 //      выбираем путь трек из листа который нужно проиграть, позже сделать через recycler view
         File file = new File(path);
-        byte[] bytes = new byte[980];
+        byte[] bytes = new byte[(int) file.length()];
 
-        FileInputStream fis = null;
-        try {
-            fis = new FileInputStream(file);
-
+        try (FileInputStream fis = new FileInputStream(file)) {
             //read file into bytes[]
             fis.read(bytes);
-
-        } finally {
-            if (fis != null) {
-                fis.close();
-            }
         }
-        Log.d(Constans.TAG, "bytes" + Arrays.toString(bytes));
         return bytes;
     }
 
@@ -334,21 +368,7 @@ public class BluetoothService {
             FileOutputStream fos = new FileOutputStream(Mytemp);
             fos.write(mp3SoundByteArray);
             fos.close();
-
-//          создаем медиа плеер и сразу запускаем трек
-
-//            FileInputStream MyFile = new FileInputStream(Mytemp);
-//            return MyFile;
-
-
-//              создаем медиа плеер и сразу запускаем трек
-            MediaPlayer mediaPlayer = new MediaPlayer();
-
             FileInputStream MyFile = new FileInputStream(Mytemp);
-            mediaPlayer.setDataSource(MyFile.getFD());
-
-            mediaPlayer.prepare();
-            mediaPlayer.start();
             return MyFile;
         } catch (IOException ex) {
             String s = ex.toString();

@@ -15,6 +15,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.media.MediaPlayer;
 import android.net.Uri;
 import android.os.Build;
@@ -31,10 +33,12 @@ import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -83,11 +87,39 @@ public class MainActivity extends AppCompatActivity {
         broadcastBTN.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                try {
-                    mBluetoothService.getmConnectedThread().write(mBluetoothService.readFileToBytes(musicLists.get(0).getMusicFile()));
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
+
+                Runnable runnable = new Runnable() {
+                    @Override
+                    public void run() {
+
+                        byte[] bytes = null;
+                        try {
+                            bytes = mBluetoothService.readFileToBytes(musicLists.get(0).getMusicFile());
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
+
+                        int subArraySize = 990;
+                        String string = String.valueOf(bytes.length); //any type: int, double, float...
+                        byte[] bytes1 = string.getBytes();
+                        Log.d(Constans.TAG, "run: byteLength " + string);
+
+                        mBluetoothService.getmConnectedThread().write(bytes1);
+                        try {
+                            mBluetoothService.getmConnectedThread().sleep(50);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
+                        byte[] tempArray;
+                        Log.d(Constans.TAG, "run: start time");
+                        for (int i = 0; i < bytes.length; i += subArraySize) {
+                            tempArray = Arrays.copyOfRange(bytes, i, Math.min(bytes.length, i + subArraySize));
+                            mBluetoothService.getmConnectedThread().write(tempArray);
+                        }
+                    }
+                };
+                Thread broadcast = new Thread(runnable);
+                broadcast.start();
             }
         });
 
@@ -102,13 +134,11 @@ public class MainActivity extends AppCompatActivity {
                     byte[] readBuf = (byte[]) msg.obj; //буфер считанный из потока
                     // construct a string from the valid bytes in the buffer
                     int bytes = msg.arg1;
-                    Log.d(Constans.TAG, "bytes" + Arrays.toString(readBuf));
 
-                        FileInputStream fis = mBluetoothService.WriteByteArrayToFile(readBuf);
-//                        startPlayer(fis);
-
+                    FileInputStream fis = mBluetoothService.WriteByteArrayToFile(readBuf);
+                    startPlayer(fis);
+                    Log.d(Constans.TAG, "handleMessage: finish time " + bytes);
                     text.setText("" + bytes); // возможно во фрагменте нужно будет юзать ui thread
-                    Log.d(Constans.TAG, "handleMessage:bytes " + bytes);
                 }
             }
         };
