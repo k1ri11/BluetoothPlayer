@@ -2,13 +2,13 @@ package com.example.bluetooth_player;
 
 import android.net.Uri;
 
-public class MusicList {
+public class Music {
 
     private String title, artist, duration;
     private boolean isPlaying;
     private String musicFile;
 
-    public MusicList(String title, String artist, String duration, boolean isPlaying, String musicFile) {
+    public Music(String title, String artist, String duration, boolean isPlaying, String musicFile) {
         this.title = title;
         this.artist = artist;
         this.duration = duration;

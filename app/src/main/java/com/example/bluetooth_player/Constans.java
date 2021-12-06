@@ -3,7 +3,8 @@ package com.example.bluetooth_player;
 import java.util.UUID;
 
 public interface Constans {
-    int MESSAGE_READ = 1;
+    int BYTES_READ = 1;
+    int SECONDS_READ = 2;
     int REQUEST_ENABLE_BLUETOOTH = 11;
     int REQUEST_ACCESS_COARSE_LOCATION = 1;
     String TAG = "Bluetooth-check";

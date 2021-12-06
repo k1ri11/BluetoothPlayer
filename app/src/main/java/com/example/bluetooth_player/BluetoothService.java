@@ -5,21 +5,18 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothServerSocket;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
-import android.media.MediaPlayer;
 import android.os.Handler;
 import android.os.Message;
 import android.util.Log;
 import android.widget.Toast;
 
 import java.io.File;
-import java.io.FileDescriptor;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
 public class BluetoothService {
 
@@ -27,7 +24,6 @@ public class BluetoothService {
     private int bluetoothState = 0;
     private final Context context;
     private boolean permissions;
-    byte[] information = {1, 1, 0, 1, 0, 1, 0, 0, 0, 1};
 
     private final MainActivity activity;//    колхоз
 
@@ -54,6 +50,56 @@ public class BluetoothService {
 
     public ConnectedThread getmConnectedThread() {
         return mConnectedThread;
+    }
+
+    //  bluetoothState = 0 Bluetooth not available
+//  bluetoothState = 1 Bluetooth is turned off
+//  bluetoothState = 2 Bluetooth is turned on but not discovering
+//  bluetoothState = 3 Bluetooth is discovering
+    public int checkBluetoothState() {
+        if (mAdapter == null) {
+            Toast.makeText(context, "Bluetooth не доступен ", Toast.LENGTH_SHORT).show();
+        } else {
+            if (mAdapter.isEnabled()) {
+                if (mAdapter.isDiscovering()) {
+                    bluetoothState = 3;
+                    Toast.makeText(context, "Bluetooth ведет поиск...", Toast.LENGTH_SHORT).show();
+                } else {
+                    Toast.makeText(context, "Bluetooth включен и не ведет поиск", Toast.LENGTH_SHORT).show();
+                    bluetoothState = 2;
+                }
+            } else {
+                Toast.makeText(context, "Bluetooth выключен ", Toast.LENGTH_SHORT).show();
+                bluetoothState = 1;
+            }
+        }
+        return bluetoothState;
+    }
+
+    public void startSearch() {
+
+        switch (bluetoothState) {
+            case 1:
+                activity.startBluetooth();
+                break;
+
+            case 2:
+                if (permissions) {
+                    boolean result = mAdapter.startDiscovery(); //start discovering and show result of function
+                    Toast.makeText(context, "запуск сканирования: " + result, Toast.LENGTH_SHORT).show();
+//                    bluetoothBtn.setText("Stop"); в ui выставляем кнопку на stop
+                    bluetoothState = 3;
+                }
+                break;
+            case 3:
+                Log.d(Constans.TAG, "Stop");
+                mAdapter.cancelDiscovery();
+                bluetoothState = 2;
+//                bluetoothBtn.setText("Start"); в ui выставляем кнопку на start
+                break;
+            default:
+                Toast.makeText(context, "Switch failed", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private class AcceptThread extends Thread {
@@ -87,6 +133,7 @@ public class BluetoothService {
                 if (socket != null) {
                     // управлчем соединением (в отдельном потоке)
                     manageConnectedSocket(socket);
+                    cancel();
                     try {
                         mServerSocket.close();
                     } catch (IOException e) {
@@ -111,6 +158,10 @@ public class BluetoothService {
         Log.d(Constans.TAG, "manageConnectedSocket: success");
         mConnectedThread = new ConnectedThread(socket);
         mConnectedThread.start();
+        if (isServer){
+            activity.startBroadcast();
+        }
+
     }
 
     private class ConnectThread extends Thread {
@@ -194,67 +245,51 @@ public class BluetoothService {
         }
 
         public void run() {
+            if (!isServer) {
+                byte[] buffer = null;
+                byte[] data;
+                int numberOfBytes = 0;
+                int numbers;
+                int index = 0;
+                String numberofBytes;
+                boolean flag = true;
+                while (true) {
 
-            byte[] buffer = null;
-            byte[] data;
-            int numberOfBytes = 0;
-            int numbers;
-            int index=0;
-            String numberofBytes;
-            boolean flag = true;
-            while (true) {
-
-                if(flag)
-                {
-                    try {
-                        byte[] temp = new byte[mInStream.available()];
-                        if(mInStream.read(temp)>0)
-                        {
-                            numberofBytes = new String(temp, StandardCharsets.UTF_8);
-                            Log.d(Constans.TAG, "run:  " + numberofBytes);
-                            numberOfBytes=Integer.parseInt(numberofBytes);
-                            buffer=new byte[numberOfBytes];
-                            flag=false;
+                    if (flag) {
+                        try {
+                            byte[] temp = new byte[mInStream.available()];
+                            if (mInStream.read(temp) > 0) {
+                                numberofBytes = new String(temp, StandardCharsets.UTF_8);
+                                Log.d(Constans.TAG, "run:  " + numberofBytes);
+                                numberOfBytes = Integer.parseInt(numberofBytes);
+                                buffer = new byte[numberOfBytes];
+                                flag = false;
+                            }
+                        } catch (IOException e) {
+                            e.printStackTrace();
                         }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }else{
-                    try {
-                        data = new byte[mInStream.available()];
-                        numbers = mInStream.read(data);  // почитать про read, и оптимизировать 2 след строки
+                    } else {
+                        try {
+                            data = new byte[mInStream.available()];
+                            numbers = mInStream.read(data);
 
-                        System.arraycopy(data,0,buffer,index,numbers);
-                        index=index+numbers;
+                            System.arraycopy(data, 0, buffer, index, numbers);
+                            index = index + numbers;
 
-                        if(index == numberOfBytes)
-                        {
-                            Message msg = mHandler.obtainMessage(Constans.MESSAGE_READ, numberOfBytes, -1, buffer);
-                            mHandler.sendMessage(msg);
-                            flag = true;
+                            if (index == numberOfBytes) {
+                                // допилить чтобы можно было передавать тайминг на котором играет трек соответственно нужна
+                                // еще одна пометка к сообщению и case в хендлере
+                                Message msg = mHandler.obtainMessage(Constans.BYTES_READ, numberOfBytes, -1, buffer);
+                                mHandler.sendMessage(msg);
+                                flag = true;
+                            }
+                        } catch (IOException e) {
+                            e.printStackTrace();
                         }
-                    } catch (IOException e) {
-                        e.printStackTrace();
                     }
                 }
-
-
-
-//                // Прослушиваем InputStream пока не произойдет исключение
-//                try {
-//                    // читаем из InputStream
-//                    bytesLength = mInStream.read(buffer);
-//                    if (bytesLength == -1) Log.d("Bluetooth-check", "no bytes");
-//                    else
-//                        Log.d("Bluetooth-check", "have bytes:" + bytesLength);
-////                      посылаем прочитанные байты главной деятельности
-//                    Message msg = mHandler.obtainMessage(Constans.MESSAGE_READ, bytesLength, -1, buffer);
-//                    mHandler.sendMessage(msg);
-//                } catch (IOException e) {
-//                    e.printStackTrace();
-//                    break;
-//                }
             }
+
         }
 
         /* Вызываем этот метод из главной деятельности, чтобы отправить данные
@@ -280,73 +315,27 @@ public class BluetoothService {
     }
 
     public void startServer() {
+
+        if (bluetoothState == 1){
+            activity.startBluetooth();
+        }
         AcceptThread acceptThread = new AcceptThread();
         Log.d(Constans.TAG, "run: start server");
         acceptThread.start();
-        //TODO: позакрывать сокеты
     }
 
     public void startConnection(BluetoothDevice selectedDevice) {
 
         ConnectThread connectThread = new ConnectThread(selectedDevice);
-        Log.d(Constans.TAG, "run: connectThread");
         isServer = false;
         connectThread.start();
-        //TODO: позакрывать сокеты
+//        connectThread.cancel();
+        //TODO: когда не нужен закрыть
     }
 
 
-//  bluetoothState = 0 Bluetooth not available
-//  bluetoothState = 1 Bluetooth is turned off
-//  bluetoothState = 2 Bluetooth is turned on but not discovering
-//  bluetoothState = 3 Bluetooth is discovering
 
-    public int checkBluetoothState() {
-        if (mAdapter == null) {
-            Toast.makeText(context, "Bluetooth not available", Toast.LENGTH_SHORT).show();
-        } else {
-            if (mAdapter.isEnabled()) {
-                if (mAdapter.isDiscovering()) {
-                    bluetoothState = 3;
-                    Toast.makeText(context, "Device is discovering...", Toast.LENGTH_SHORT).show();
-                } else {
-                    Toast.makeText(context, "Bluetooth is enabled", Toast.LENGTH_SHORT).show();
-                    bluetoothState = 2;
-                }
-            } else {
-                Toast.makeText(context, "You need to enabled bluetooth", Toast.LENGTH_SHORT).show();
-                bluetoothState = 1;
-            }
-        }
-        return bluetoothState;
-    }
 
-    public void startSearch() {
-
-        switch (bluetoothState) {
-            case 1:
-                activity.startBluetooth();
-                break;
-
-            case 2:
-                if (permissions) {
-                    boolean result = mAdapter.startDiscovery(); //start discovering and show result of function
-                    Toast.makeText(context, "Start discovery result: " + result, Toast.LENGTH_SHORT).show();
-                    Log.d(Constans.TAG, "Start discovery: " + result);
-//                    bluetoothBtn.setText("Stop"); в ui выставляем кнопку на stop
-                    bluetoothState = 3;
-                }
-                break;
-            case 3:
-                Log.d(Constans.TAG, "Stop");
-                mAdapter.cancelDiscovery();
-                bluetoothState = 2;
-//                bluetoothBtn.setText("Start"); в ui выставляем кнопку на start
-                break;
-            default:
-                Toast.makeText(context, "Switch failed", Toast.LENGTH_SHORT).show();
-        }
-    }
 
     public byte[] readFileToBytes(String path) throws IOException {
 
@@ -381,64 +370,4 @@ public class BluetoothService {
 //        return mReceiver;
 //    }
 
-
-//    private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
-//        public void onReceive(Context context, Intent intent) {
-//            String action = intent.getAction();
-//            if (BluetoothDevice.ACTION_FOUND.equals(action)) {
-//                // Discovery has found a device. Get the BluetoothDevice
-//                // object and its info from the Intent.
-//                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-//                String deviceName = device.getName();
-//                String deviceHardwareAddress = device.getAddress(); // MAC address
-//
-//
-////                Вызываем update list из адаптера recyclerView, передаемему всю инфу а он внутри сам ее add
-////                bluetoothDevices.add(device);
-////                devicesInfo.add(device.getName() + "\n" + device.getAddress());
-////
-////                это уйдет в фрагмент
-////                ArrayAdapter devicesAdapter = new ArrayAdapter(getApplicationContext(), android.R.layout.simple_list_item_1, devicesInfo);
-////                lvDevices = findViewById(R.id.lv_devices);
-////                lvDevices.setAdapter(devicesAdapter);
-////                checkCoarseLocationPermission();
-//
-////                полностью уйдет в адаптер/фрагмент
-////                lvDevices.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-////                    public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-////                        selectedDevice = bluetoothDevices.get((int) id);
-////
-////                        mBluetoothService.startConnection(selectedDevice);
-////                    }
-////                });
-//            }
-//
-//            if (BluetoothAdapter.ACTION_DISCOVERY_STARTED.equals(action)) {
-//                //report user
-////                Log.d(TAG, "Started");
-////                Toast.makeText(getApplicationContext(), "STARTED", Toast.LENGTH_SHORT).show();
-//            }
-//
-//            if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
-//                //change button back to "Start"
-////                statusDisc = 0;
-////                final Button test = findViewById(R.id.testbutton);
-////                test.setText("Start");
-//                //report user
-////                Log.d(TAG, "Finished");
-////                Toast.makeText(getApplicationContext(), "FINISHED", Toast.LENGTH_SHORT).show();
-//            }
-//
-//            if (mAdapter.ACTION_STATE_CHANGED.equals(action)) {
-//                final int extra = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1);
-//                if (extra == (BluetoothAdapter.STATE_ON)) {
-//                    if (mAdapter.isDiscovering()) {
-//                        mAdapter.cancelDiscovery();
-//                    }
-//                    Boolean b = mAdapter.startDiscovery();
-//                    Toast.makeText(getApplicationContext(), "Start discovery" + b, Toast.LENGTH_SHORT).show();
-//                }
-//            }
-//        }
-//    };
 }
