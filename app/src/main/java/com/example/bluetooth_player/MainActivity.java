@@ -39,6 +39,9 @@ import android.widget.Toast;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.math.BigInteger;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -98,8 +101,35 @@ public class MainActivity extends AppCompatActivity implements SongChangeListene
                     byte[] readBuf = (byte[]) msg.obj; //буфер считанный из потока
                     int bytes = msg.arg1;
                     Toast.makeText(getApplicationContext(), "Файл получен", Toast.LENGTH_SHORT).show();
+
+                    byte[] arraySeconds = new byte[15];
+                    System.arraycopy(readBuf, readBuf.length - 15, arraySeconds, 0, 15);
+
+                    int counter = 0;
+                    for (int i = 0; i < 15; i++){
+                        if(arraySeconds[i] != 0){
+                            counter++;
+                        }
+                    }
+                    byte[] tmpBytes = new byte[counter];
+                    int j =0;
+                    for (int i = 0; i < 15; i++){
+                        if(arraySeconds[i] != 0){
+                            counter++;
+                            tmpBytes[j] = arraySeconds[i];
+                            j++;
+                        }
+                    }
+
+                    String secondsString = new String(tmpBytes, StandardCharsets.UTF_8);
+                    int seconds = Integer.parseInt(secondsString);
+
+
+
+                    Log.d(Constans.TAG, "handleMessage: " + seconds);
+
                     FileInputStream fis = mBluetoothService.WriteByteArrayToFile(readBuf);
-                    onChanged2(fis);
+                    onChanged2(fis, seconds);
                     Log.d(Constans.TAG, "handleMessage: finish time " + bytes);
                 }
             }
@@ -366,7 +396,8 @@ public class MainActivity extends AppCompatActivity implements SongChangeListene
                     e.printStackTrace();
                 }
                 int subArraySize = 990;
-                String string = String.valueOf(bytes.length); //any type: int, double, float...
+                int length = bytes.length + 15;
+                String string = String.valueOf(length); //any type: int, double, float...
                 byte[] bytes1 = string.getBytes();
                 Log.d(Constans.TAG, "run: byteLength " + string);
 
@@ -382,6 +413,13 @@ public class MainActivity extends AppCompatActivity implements SongChangeListene
                     tempArray = Arrays.copyOfRange(bytes, i, Math.min(bytes.length, i + subArraySize));
                     mBluetoothService.getmConnectedThread().write(tempArray);
                 }
+                Integer seconds = mediaPlayer.getCurrentPosition();
+                String string2 = String.valueOf(seconds);
+                byte[] arraySeconds = new byte[15];
+                arraySeconds = string2.getBytes();
+                Log.d(Constans.TAG, "run: отправили" + seconds + "\n" + Arrays.toString(arraySeconds));
+
+                mBluetoothService.getmConnectedThread().write(arraySeconds);
             }
         };
         Thread broadcast = new Thread(runnable);
@@ -499,7 +537,7 @@ public class MainActivity extends AppCompatActivity implements SongChangeListene
         });
     }
 
-    public void onChanged2(FileInputStream fis) {
+    public void onChanged2(FileInputStream fis, int seconds) {
 
         if (mediaPlayer.isPlaying()) {
             mediaPlayer.pause();
@@ -520,7 +558,6 @@ public class MainActivity extends AppCompatActivity implements SongChangeListene
                 }
             }
         }).start();
-
         mediaPlayer.setOnPreparedListener(new MediaPlayer.OnPreparedListener() {
             @Override
             public void onPrepared(MediaPlayer mp) {
@@ -533,7 +570,7 @@ public class MainActivity extends AppCompatActivity implements SongChangeListene
 
                 endTime.setText(generateDuration);
                 isPlaying = true;
-
+                mp.seekTo(seconds);
                 mp.start();
 
                 playerSeekBar.setMax(getTotalDuration);

@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 
 public class BluetoothService {
 
@@ -158,7 +159,7 @@ public class BluetoothService {
         Log.d(Constans.TAG, "manageConnectedSocket: success");
         mConnectedThread = new ConnectedThread(socket);
         mConnectedThread.start();
-        if (isServer){
+        if (isServer) {
             activity.startBroadcast();
         }
 
@@ -247,6 +248,7 @@ public class BluetoothService {
         public void run() {
             if (!isServer) {
                 byte[] buffer = null;
+                byte[] buffer2 = null;
                 byte[] data;
                 int numberOfBytes = 0;
                 int numbers;
@@ -270,19 +272,29 @@ public class BluetoothService {
                         }
                     } else {
                         try {
+//                            Log.d(Constans.TAG, "run: " + mInStream.available());
                             data = new byte[mInStream.available()];
                             numbers = mInStream.read(data);
 
                             System.arraycopy(data, 0, buffer, index, numbers);
                             index = index + numbers;
 
-                            if (index == numberOfBytes) {
+                            if (index + 15 > numberOfBytes) {
                                 // допилить чтобы можно было передавать тайминг на котором играет трек соответственно нужна
                                 // еще одна пометка к сообщению и case в хендлере
                                 Message msg = mHandler.obtainMessage(Constans.BYTES_READ, numberOfBytes, -1, buffer);
                                 mHandler.sendMessage(msg);
+
+//                                byte[] data2 = new byte[15];
+//                                int numbers2 = mInStream.read(data2);
+//                                buffer2 = new byte[numbers2];
+//                                System.arraycopy(data2, 0, buffer2, 0, numbers2);
+//                                Log.d(Constans.TAG, "handleMessage: finish time " + Arrays.toString(buffer2) + "\n" + numbers2);
+//                                Message msg2 = mHandler.obtainMessage(Constans.SECONDS_READ, numbers2, -1, buffer2);
+//                                mHandler.sendMessage(msg2);
                                 flag = true;
                             }
+
                         } catch (IOException e) {
                             e.printStackTrace();
                         }
@@ -316,7 +328,7 @@ public class BluetoothService {
 
     public void startServer() {
 
-        if (bluetoothState == 1){
+        if (bluetoothState == 1) {
             activity.startBluetooth();
         }
         AcceptThread acceptThread = new AcceptThread();
@@ -332,9 +344,6 @@ public class BluetoothService {
 //        connectThread.cancel();
         //TODO: когда не нужен закрыть
     }
-
-
-
 
 
     public byte[] readFileToBytes(String path) throws IOException {
