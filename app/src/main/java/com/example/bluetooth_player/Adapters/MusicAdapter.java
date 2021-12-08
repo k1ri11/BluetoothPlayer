@@ -1,7 +1,6 @@
-package com.example.bluetooth_player;
+package com.example.bluetooth_player.Adapters;
 
 import android.content.Context;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -9,6 +8,11 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
+
+import com.example.bluetooth_player.Models.Music;
+import com.example.bluetooth_player.R;
+import com.example.bluetooth_player.SongChangeListener;
+
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;

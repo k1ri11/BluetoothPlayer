@@ -45,6 +45,10 @@ public class BluetoothService {
         this.mHandler = mHandler;
     }
 
+    public void setBluetoothState(int newState){
+        bluetoothState = newState;
+    }
+
     public BluetoothAdapter getAdapter() {
         return mAdapter;
     }
@@ -156,7 +160,7 @@ public class BluetoothService {
     }
 
     private void manageConnectedSocket(BluetoothSocket socket) {
-        Log.d(Constans.TAG, "manageConnectedSocket: success");
+        Toast.makeText(context, "Подключение прошло успешно", Toast.LENGTH_SHORT).show();
         mConnectedThread = new ConnectedThread(socket);
         mConnectedThread.start();
         if (isServer) {
@@ -318,16 +322,20 @@ public class BluetoothService {
         /* Вызываем этот метод из главной деятельности,
     чтобы разорвать соединение */
         public void cancel() {
+            Log.d(Constans.TAG, "cancel: " + mSocket);
             try {
                 mSocket.close();
+                startServer();
             } catch (IOException e) {
+                Log.d(Constans.TAG, "cancel: " + mSocket);
                 e.printStackTrace();
             }
         }
     }
 
     public void startServer() {
-
+        isServer = true;
+        activity.updateState(isServer);
         if (bluetoothState == 1) {
             activity.startBluetooth();
         }
@@ -337,9 +345,9 @@ public class BluetoothService {
     }
 
     public void startConnection(BluetoothDevice selectedDevice) {
-
         ConnectThread connectThread = new ConnectThread(selectedDevice);
         isServer = false;
+        activity.updateState(isServer);
         connectThread.start();
 //        connectThread.cancel();
         //TODO: когда не нужен закрыть

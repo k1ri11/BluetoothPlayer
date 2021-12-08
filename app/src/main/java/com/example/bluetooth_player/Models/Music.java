@@ -1,4 +1,4 @@
-package com.example.bluetooth_player;
+package com.example.bluetooth_player.Models;
 
 import android.net.Uri;
 

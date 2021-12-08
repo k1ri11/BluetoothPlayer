@@ -11,6 +11,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothSocket;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -37,10 +38,11 @@ import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.example.bluetooth_player.Adapters.MusicAdapter;
+import com.example.bluetooth_player.Models.Music;
+
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.math.BigInteger;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -56,6 +58,7 @@ public class MainActivity extends AppCompatActivity implements SongChangeListene
     private BluetoothAdapter mAdapter;
     private BluetoothService mBluetoothService;
     private boolean permissions = false;
+    private boolean isServer = true;
     private int statusDisc = 0;     //0 = start discovering, 1 = cancel discovering
 
     private ArrayList<String> devicesInfo = new ArrayList<>();
@@ -65,7 +68,6 @@ public class MainActivity extends AppCompatActivity implements SongChangeListene
     private BluetoothDevice selectedDevice;
 
     private MediaPlayer mediaPlayer = new MediaPlayer();
-    private Music tmpMusic;
     private String tmpDeviceName = "";//    колхоз
     private RecyclerView musicRV;
     private MusicAdapter musicAdapter;
@@ -75,6 +77,8 @@ public class MainActivity extends AppCompatActivity implements SongChangeListene
     private ImageView playPauseImg;
     private Timer timer;
     private int currentSongListPosition = 0;
+    private TextView connectedDevice;
+    private Button disconnectBtn;
 
 
     @Override
@@ -101,44 +105,15 @@ public class MainActivity extends AppCompatActivity implements SongChangeListene
                     byte[] readBuf = (byte[]) msg.obj; //буфер считанный из потока
                     int bytes = msg.arg1;
                     Toast.makeText(getApplicationContext(), "Файл получен", Toast.LENGTH_SHORT).show();
-
-                    byte[] arraySeconds = new byte[15];
-                    System.arraycopy(readBuf, readBuf.length - 15, arraySeconds, 0, 15);
-
-                    int counter = 0;
-                    for (int i = 0; i < 15; i++){
-                        if(arraySeconds[i] != 0){
-                            counter++;
-                        }
-                    }
-                    byte[] tmpBytes = new byte[counter];
-                    int j =0;
-                    for (int i = 0; i < 15; i++){
-                        if(arraySeconds[i] != 0){
-                            counter++;
-                            tmpBytes[j] = arraySeconds[i];
-                            j++;
-                        }
-                    }
-
-                    String secondsString = new String(tmpBytes, StandardCharsets.UTF_8);
-                    int seconds = Integer.parseInt(secondsString);
-
-
-
-                    Log.d(Constans.TAG, "handleMessage: " + seconds);
-
+                    int seconds = parseSeconds(readBuf);
                     FileInputStream fis = mBluetoothService.WriteByteArrayToFile(readBuf);
                     onChanged2(fis, seconds);
-                    Log.d(Constans.TAG, "handleMessage: finish time " + bytes);
                 }
             }
         };
 
         mAdapter = BluetoothAdapter.getDefaultAdapter();
         mBluetoothService = new BluetoothService(this, this.getApplicationContext(), mAdapter, permissions, mHandler);
-
-
         //делаем устройство видимым для других
         Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
         discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 100);
@@ -163,6 +138,15 @@ public class MainActivity extends AppCompatActivity implements SongChangeListene
         playPauseImg = findViewById(R.id.playPauseImg);
         startTime = findViewById(R.id.startTime);
         endTime = findViewById(R.id.endTime);
+        connectedDevice = findViewById(R.id.connected_device);
+        disconnectBtn = findViewById(R.id.disconnect_btn);
+
+        disconnectBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                disconnect();
+            }
+        });
 
         //recycler
         musicRV = findViewById(R.id.music_rv);
@@ -257,7 +241,6 @@ public class MainActivity extends AppCompatActivity implements SongChangeListene
         });
     }
 
-
     private final BroadcastReceiver mReceiver = new BroadcastReceiver() {
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
@@ -316,6 +299,7 @@ public class MainActivity extends AppCompatActivity implements SongChangeListene
     public void startBluetooth() {
         Intent enabledIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
         startActivityForResult(enabledIntent, Constans.REQUEST_ENABLE_BLUETOOTH);
+        mBluetoothService.setBluetoothState(1);
     }
 
     @Override
@@ -385,6 +369,21 @@ public class MainActivity extends AppCompatActivity implements SongChangeListene
         cursor.close();
     }
 
+    public void updateState(boolean isServer){
+        this.isServer = isServer;
+        if (!isServer){
+            connectedDevice.setText(selectedDevice.getName());
+        }
+        else{
+            connectedDevice.setText("");
+        }
+    }
+
+    public void disconnect(){
+        mBluetoothService.getmConnectedThread().cancel();
+        selectedDevice = null;
+    }
+
     public void startBroadcast() {
         Runnable runnable = new Runnable() {
             @Override
@@ -426,25 +425,28 @@ public class MainActivity extends AppCompatActivity implements SongChangeListene
         broadcast.start();
     }
 
-    private void startPlayer(FileInputStream fis) {
-        if (mediaPlayer.isPlaying()) {
-            mediaPlayer.pause();
-            mediaPlayer.reset();
-            Log.d(Constans.TAG, "startPlayer: ");
-        }
-        mediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    mediaPlayer.setDataSource(fis.getFD());
-                    mediaPlayer.prepare();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                    Toast.makeText(MainActivity.this, "Unable to play track", Toast.LENGTH_SHORT).show();
-                }
+    private int parseSeconds(byte[] readBuf) {
+        byte[] arraySeconds = new byte[15];
+        System.arraycopy(readBuf, readBuf.length - 15, arraySeconds, 0, 15);
+
+        int counter = 0;
+        for (int i = 0; i < 15; i++){
+            if(arraySeconds[i] != 0){
+                counter++;
             }
-        }).start();
+        }
+        byte[] tmpBytes = new byte[counter];
+        int j =0;
+        for (int i = 0; i < 15; i++){
+            if(arraySeconds[i] != 0){
+                counter++;
+                tmpBytes[j] = arraySeconds[i];
+                j++;
+            }
+        }
+
+        String secondsString = new String(tmpBytes, StandardCharsets.UTF_8);
+        return Integer.parseInt(secondsString);
     }
 
     @Override
